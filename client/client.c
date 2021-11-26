@@ -81,6 +81,7 @@ int main(void)
     //
     //
 
+    /*
     void menu(){
 	int choice;
 	do{
@@ -112,7 +113,7 @@ int main(void)
 
 	} while (choice!=5);
     }
-
+*/
 
 
 

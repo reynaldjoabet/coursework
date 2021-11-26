@@ -29,7 +29,7 @@ typedef struct {
 void get_and_send_employee(int, employee *);
 int* generate_random_numbers();
 void send_hello(int);
-void get_and_send_name_and_student_id(int);
+void get_and_send_name_and_student_id(int,int);
 void get_and_send_five_random_numbers(int,int *);
 void get_and_send_file_names(int socket);
 struct utsname server_uname_information();
@@ -114,7 +114,11 @@ void *client_handler(void *socket_desc)
 
     free(employee1);
 
-/*
+    struct utsname uts=server_uname_information();// get the server information
+   get_and_send_server_uname_information(connfd,&uts);
+     int *random_number_pointer=generate_random_numbers();
+     get_and_send_five_random_numbers(connfd,random_number_pointer);
+
      // get "wall clock" time at end
     if (gettimeofday(&tv2, NULL) == -1) {
         perror("gettimeofday error");
@@ -122,11 +126,10 @@ void *client_handler(void *socket_desc)
     }
     // in microseconds...
  float execution_time= (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec);
-
+   
 
  // in microseconds...
     printf("Total execution time = %f seconds\n",execution_time);
-*/
 
     shutdown(connfd, SHUT_RDWR);
     close(connfd);
@@ -156,9 +159,10 @@ void get_and_send_employee(int socket, employee * e)
 {
     size_t payload_length;
 
-    size_t n =readn(socket, (unsigned char *) &payload_length, sizeof(size_t));
+    size_t n =
+     readn(socket, (unsigned char *) &payload_length, sizeof(size_t));
     printf("payload_length is: %zu (%zu bytes)\n", payload_length, n);
-    n = readn(socket, (unsigned char *) e, payload_length);
+    n=readn(socket, (unsigned char *) e, payload_length);
 
     printf("Age is %d\n", e->age);
     printf("id is %d\n", e->id_number);
@@ -193,15 +197,14 @@ int * generate_random_numbers(){
 
 
 
-//int *random_number_pointer=generate_random_number();
 
-void get_and_send_name_and_student_id(int socket){
+void get_and_send_name_and_student_id(int client_socket,int server_address){
      char student_name[]="Liyeuk Reynald Joabet ";
      char student_id[]=  " S1906586";
 
-      struct sockaddr_in* ipv4address=(struct sockaddr_in*) &serv_addr;
+      struct sockaddr_in* ipv4address=(struct sockaddr_in*) &server_address;
      struct in_addr ipaddress= ipv4address->sin_addr;// access the sin_addr member of in_addr
-     char string_ip_address[INET_ADDRSTRLEiN]; // declares an array of length INET_ADDRSTRLEN
+     char string_ip_address[INET_ADDRSTRLEN]; // declares an array of length INET_ADDRSTRLEN
      if(inet_ntop(AF_INET,&ipaddress,string_ip_address,INET_ADDRSTRLEN)==NULL){
      perror("Failed to obtain ip of server");
      exit(EXIT_FAILURE);
@@ -211,15 +214,15 @@ void get_and_send_name_and_student_id(int socket){
      strcat(student_name,string_ip_address);// concatenate student_name and ip address
      strcat(student_name,student_id);// concatenate the result of the first concatenation with student_id
      size_t length=strlen(student_name);//length of message to be sent
-     char message[lentgh];// array
+     char message[length];// array
      strcpy(message,student_name);
-     printf("%d\n",length);
+     printf("%lu\n",length);
      printf("%s\n",message);
-     printf("%s \n",strlen(message));
+     printf("%lu \n",strlen(message));
      size_t size=length+1;
      // send length of message to client first
-      writen(socket, (unsigned char *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
-      writen(socket, (unsigned char *)message, size);  
+      writen(client_socket, (unsigned char *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
+      writen(client_socket, (unsigned char *)message, size);  
 }
 
 void get_and_send_five_random_numbers(int socket,int *p){
@@ -227,7 +230,7 @@ void get_and_send_five_random_numbers(int socket,int *p){
 	int length=5;
         char message[length];
 	for(int i=0;i<length;i++){
-       sprintf(&messages[strlen(messages)],"%d",*(p+i));
+       sprintf(&message[strlen(message)],"%d",*(p+i));
 
       }
 
@@ -248,14 +251,15 @@ struct utsname server_uname_information(){
 
   return uts;	
 }
-//struct utsuname uts=server_uname_information();// get the server information
+
 void get_and_send_server_uname_information(int socket,struct utsname * uts){
 
     size_t payload_length;
 
-    size_t n =readn(socket, (unsigned char *) &payload_length, sizeof(size_t));
+    size_t n =
+    writen(socket, (unsigned char *) &payload_length, sizeof(size_t));
     printf("payload_length is: %zu (%zu bytes)\n", payload_length, n);
-    n = readn(socket, (unsigned char *)uts, payload_length);
+    n = writen(socket, (unsigned char *)uts, payload_length);
 
     printf("Node name:    %s\n",  uts->nodename);
     printf("System name:  %s\n",  uts->sysname);
@@ -263,12 +267,10 @@ void get_and_send_server_uname_information(int socket,struct utsname * uts){
     printf("Version:      %s\n",  uts->version);
     printf("Machine:      %s\n",  uts->machine);
     printf("(%zu bytes)\n", n);
-    writen(socket, (unsigned char *) &payload_length, sizeof(size_t));
-    writen(socket, (unsigned char *) uts, payload_length);
 
     // send length of message to client first
-    writen(socket, (unsigned char *) &length, sizeof(size_t));// send the amount of characters to be sent to client
-    writen(socket, (unsigned char *)message, length);
+    writen(socket, (unsigned char *) &payload_length, sizeof(size_t));// send the amount of characters to be sent to client
+    writen(socket, (unsigned char *)uts, payload_length);
 
 }
 
