@@ -13,10 +13,14 @@
 #include "rdwrn.h"
 #include <sys/utsname.h>
 #include <time.h>
-#include<time.h>		// for clock() - a standard library function
+#include <time.h>		// for clock() - a standard library function
 #include <sys/time.h>		// gettimeofday() - a system call
-
+#include <signal.h>
 #define SERVER_PORT 50031
+
+   struct timeval tv1;
+
+  char string_ip_address[INET_ADDRSTRLEN];// global variable
 // thread function
 void *client_handler(void *);
 
@@ -29,25 +33,84 @@ typedef struct {
 void get_and_send_employee(int, employee *);
 int* generate_random_numbers();
 void send_hello(int);
-void get_and_send_name_and_student_id(int,int);
+void get_and_send_name_and_student_id(int);
 void get_and_send_five_random_numbers(int,int *);
 void get_and_send_file_names(int socket);
 struct utsname server_uname_information();
 void get_and_send_server_uname_information(int,struct utsname *);
+char * get_ip_address();
+void get_and_send_server_time(int);
+// signal handler to be called on receipt of (in this case) SIGTERM
+static void handler(int sig, siginfo_t *siginfo, void *context)
+{
+
+	 struct timeval tv2;
+
+    printf("\n\nPID: %ld, UID: %ld\n",(long) siginfo->si_pid, (long) siginfo->si_uid);
+
+
+    // get "wall clock" time at end
+    if (gettimeofday(&tv2, NULL) == -1) {
+        perror("gettimeofday error");
+        exit(EXIT_FAILURE);
+    }
+    // in microseconds...
+ float execution_time= (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec);
+
+
+ // in microseconds...
+    printf("\nTotal execution time = %f seconds\n\n",execution_time);
+
+
+     exit(EXIT_SUCCESS);
+}
+
+
+
 // you shouldn't need to change main() in the server except the port number
 int main(void)
 {
     int listenfd = 0, connfd = 0;
 
+    struct sigaction act;// used to register the signal handler
+
+     memset(&act, '\0', sizeof(act));
+
+    // this is a pointer to a function
+    act.sa_sigaction = &handler;//handler function pointer
+
+    // the SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler
+    act.sa_flags = SA_SIGINFO;
+
+    if (sigaction(SIGINT, &act, NULL) == -1) {
+        perror("sigaction");
+        exit(EXIT_FAILURE);
+    }
+
+    
+
+
+   
     struct sockaddr_in serv_addr;// declares internet socket address for server
     struct sockaddr_in client_addr; //
     socklen_t socksize = sizeof(struct sockaddr_in);
     listenfd = socket(AF_INET, SOCK_STREAM, 0); // socket returns a file descriptor
-    memset(&serv_addr, '0', sizeof(serv_addr));
+    memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
 
     serv_addr.sin_family = AF_INET; // sets the socket internet address family to AF_INET, which is for IPV4 addresses
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY); //  socket internet address-binds to any address if server has multiple addresses eg INADDR_LOOPBACK
     serv_addr.sin_port = htons(SERVER_PORT); //converts host byte order into  network byte order
+
+     struct sockaddr_in* ipv4address=(struct sockaddr_in*) &serv_addr;
+     struct in_addr ipaddress= ipv4address->sin_addr;// access the sin_addr member of in_addr
+      //char string_ip_address[INET_ADDRSTRLEN]; // declares an array of length INET_ADDRSTRLEN
+     if(inet_ntop(AF_INET,&ipaddress,string_ip_address,INET_ADDRSTRLEN)==NULL){
+     perror("Failed to obtain ip of server");
+     exit(EXIT_FAILURE);
+
+     }// convert ip address to string
+
+
 
     bind(listenfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)); // binds, casting  serv_addr to sockaddr
 
@@ -57,6 +120,15 @@ int main(void)
 	exit(EXIT_FAILURE);
     }
     // end socket setup
+
+
+ // get "wall clock" time at start
+    // once the client connects, the start time is set
+    if (gettimeofday(&tv1, NULL) == -1) {
+        perror("gettimeofday error");
+        exit(EXIT_FAILURE);
+    }
+
 
     //Accept and incoming connection
     puts("Waiting for incoming connections...");
@@ -79,6 +151,19 @@ int main(void)
 	printf("Handler assigned\n");
     }
 
+
+
+
+       
+
+
+    close(connfd);
+    close(listenfd);
+    
+
+      
+ 
+
     // never reached...
     // ** should include a signal handler to clean up
     exit(EXIT_SUCCESS);
@@ -99,7 +184,11 @@ void *client_handler(void *socket_desc)
 
     //Get the socket descriptor
     int connfd = *(int *) socket_desc;
+    
 
+    get_and_send_server_time(connfd);
+
+    /*
     send_hello(connfd);
 
     employee *employee1;
@@ -113,11 +202,40 @@ void *client_handler(void *socket_desc)
     }
 
     free(employee1);
+*/
 
-    struct utsname uts=server_uname_information();// get the server information
-   get_and_send_server_uname_information(connfd,&uts);
-     int *random_number_pointer=generate_random_numbers();
-     get_and_send_five_random_numbers(connfd,random_number_pointer);
+     struct utsname uts=server_uname_information();// get the server information
+
+     int choice;
+     readn(connfd, (int *) &choice,sizeof(int) );
+      int *random_number_pointer=generate_random_numbers();
+
+     printf("choiceeee %d\n",choice);
+     switch(choice){
+      case 1: 
+	      get_and_send_name_and_student_id( connfd);
+	      break;
+      case 2:
+	      get_and_send_five_random_numbers(connfd,random_number_pointer);
+
+	      break;
+      case 3:
+	      get_and_send_server_uname_information(connfd,&uts);
+
+	      break;
+      case 4:
+	      break;
+      case 5: 
+	      break;
+      case 6:
+	      break;
+     
+     } while(choice!=6);
+    
+
+
+   
+     
 
      // get "wall clock" time at end
     if (gettimeofday(&tv2, NULL) == -1) {
@@ -198,47 +316,41 @@ int * generate_random_numbers(){
 
 
 
-void get_and_send_name_and_student_id(int client_socket,int server_address){
-     char student_name[]="Liyeuk Reynald Joabet ";
+void get_and_send_name_and_student_id(int client_socket){
+     char student_name[45]="Liyeuk Reynald Joabet ";
      char student_id[]=  " S1906586";
 
-      struct sockaddr_in* ipv4address=(struct sockaddr_in*) &server_address;
-     struct in_addr ipaddress= ipv4address->sin_addr;// access the sin_addr member of in_addr
-     char string_ip_address[INET_ADDRSTRLEN]; // declares an array of length INET_ADDRSTRLEN
-     if(inet_ntop(AF_INET,&ipaddress,string_ip_address,INET_ADDRSTRLEN)==NULL){
-     perror("Failed to obtain ip of server");
-     exit(EXIT_FAILURE);
-     
-     }// convert ip address to string
-     
+    
+   
      strcat(student_name,string_ip_address);// concatenate student_name and ip address
      strcat(student_name,student_id);// concatenate the result of the first concatenation with student_id
      size_t length=strlen(student_name);//length of message to be sent
-     char message[length];// array
-     strcpy(message,student_name);
-     printf("%lu\n",length);
-     printf("%s\n",message);
-     printf("%lu \n",strlen(message));
+ //    char message[length];// array
+   //  strcpy(message,student_name);
+     //printf("%lu\n",length);
+    // printf("%s\n",message);
+     //printf("%lu \n",strlen(message));
      size_t size=length+1;
      // send length of message to client first
-      writen(client_socket, (unsigned char *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
-      writen(client_socket, (unsigned char *)message, size);  
+      writen(client_socket, (unsigned int *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
+      writen(client_socket, (unsigned char *)student_name, size);  
 }
 
 void get_and_send_five_random_numbers(int socket,int *p){
-	
-	int length=5;
-        char message[length];
-	for(int i=0;i<length;i++){
+         int length=15;
+        char message[length];// 15 is the maximum we can have as the maximum random number is 999. 3 digit  times 5 
+	for(int i=0;i<5;i++){
        sprintf(&message[strlen(message)],"%d",*(p+i));
 
       }
 
-  int size=length+1;
-	// send length of message to client first
-      writen(socket, (unsigned char *) &size, sizeof(int));// send the amount of characters to be sent to client
-      writen(socket, (unsigned char *)message, size);
 
+	// send length of message to client first
+      writen(socket, (unsigned int *) &length, sizeof(int));// send the amount of characters to be sent to client
+      writen(socket, (unsigned char *)message, length);
+
+
+      printf("%s\n",message);
 }
 
 struct utsname server_uname_information(){
@@ -254,25 +366,55 @@ struct utsname server_uname_information(){
 
 void get_and_send_server_uname_information(int socket,struct utsname * uts){
 
-    size_t payload_length;
+    size_t payload_length=sizeof(*(uts));// calculate the size of the struct to send to client
 
-    size_t n =
-    writen(socket, (unsigned char *) &payload_length, sizeof(size_t));
-    printf("payload_length is: %zu (%zu bytes)\n", payload_length, n);
-    n = writen(socket, (unsigned char *)uts, payload_length);
-
-    printf("Node name:    %s\n",  uts->nodename);
-    printf("System name:  %s\n",  uts->sysname);
-    printf("Release:      %s\n",  uts->release);
-    printf("Version:      %s\n",  uts->version);
-    printf("Machine:      %s\n",  uts->machine);
-    printf("(%zu bytes)\n", n);
-
-    // send length of message to client first
+   // send length of message to client first
     writen(socket, (unsigned char *) &payload_length, sizeof(size_t));// send the amount of characters to be sent to client
-    writen(socket, (unsigned char *)uts, payload_length);
+   writen(socket, (unsigned char *)uts, payload_length);
+
+
+    //printf("hello and welcome %lu ",sizeof(&(uts)));
+    //printf("Node name:    %s\n",  uts->nodename);
+    //printf("System name:  %s\n",  uts->sysname);
+    //printf("Release:      %s\n",  uts->release);
+    //printf("Version:      %s\n",  uts->version);
+  //  printf("Machine:      %s\n",  uts->machine);
+    //printf("(%zu bytes)\n", n);
+
+    
 
 }
 
+
+ void get_and_send_server_time(int socket){
+	 size_t payload_length;
+ 
+      time_t t;    // always look up the manual to see the error conditions
+    //  here "man 2 time"
+    if ((t = time(NULL)) == -1) {
+	perror("time error");
+	exit(EXIT_FAILURE);
+    }
+
+    // localtime() is in standard library so error conditions are
+    //  here "man 3 localtime"
+    struct tm *tm;
+    if ((tm = localtime(&t)) == NULL) {
+	perror("localtime error");
+	exit(EXIT_FAILURE);
+    }    
+
+    payload_length=sizeof(*(tm));
+
+
+     writen(socket, (unsigned int *) &payload_length, sizeof(size_t));
+     writen(socket, (unsigned char *)tm, payload_length);
+
+    printf("%s\n", asctime(tm));
+    printf("%lu \n",payload_length);
+
+
+
+ }
 
 void get_and_send_file_names(int socket){}
