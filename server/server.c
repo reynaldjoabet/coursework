@@ -16,6 +16,9 @@
 #include <time.h>		// for clock() - a standard library function
 #include <sys/time.h>		// gettimeofday() - a system call
 #include <signal.h>
+#include <dirent.h>
+#include <sys/stat.h>
+
 #define SERVER_PORT 50031
 
    struct timeval tv1;
@@ -39,6 +42,8 @@ void get_and_send_file_names(int socket);
 struct utsname server_uname_information();
 void get_and_send_server_uname_information(int,struct utsname *);
 char * get_ip_address();
+void send_file(int);
+int count=0;
 void get_and_send_server_time(int);
 // signal handler to be called on receipt of (in this case) SIGTERM
 static void handler(int sig, siginfo_t *siginfo, void *context)
@@ -46,8 +51,9 @@ static void handler(int sig, siginfo_t *siginfo, void *context)
 
 	 struct timeval tv2;
 
-    printf("\n\nPID: %ld, UID: %ld\n",(long) siginfo->si_pid, (long) siginfo->si_uid);
-
+    printf("\n\nPID: %ld, UID: %ld\n",(long) siginfo->si_pid, (long) siginfo->si_status);
+ 
+    printf("%d ",sig);
 
     // get "wall clock" time at end
     if (gettimeofday(&tv2, NULL) == -1) {
@@ -76,12 +82,17 @@ int main(void)
 
      memset(&act, '\0', sizeof(act));
 
+    
+    // the SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler
+    // this also enables the handling function to be called like so 
+    // void  hndler(int signo, siginfo_t *info, void *context);
+    act.sa_flags = SA_SIGINFO;
+    
     // this is a pointer to a function
     act.sa_sigaction = &handler;//handler function pointer
 
-    // the SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler
-    act.sa_flags = SA_SIGINFO;
 
+   // if successful, returns 0 else returns -1
     if (sigaction(SIGINT, &act, NULL) == -1) {
         perror("sigaction");
         exit(EXIT_FAILURE);
@@ -89,8 +100,6 @@ int main(void)
 
     
 
-
-   
     struct sockaddr_in serv_addr;// declares internet socket address for server
     struct sockaddr_in client_addr; //
     socklen_t socksize = sizeof(struct sockaddr_in);
@@ -121,6 +130,7 @@ int main(void)
     }
     // end socket setup
 
+  
 
  // get "wall clock" time at start
     // once the client connects, the start time is set
@@ -130,6 +140,8 @@ int main(void)
     }
 
 
+
+   
     //Accept and incoming connection
     puts("Waiting for incoming connections...");
     while (1) {
@@ -173,20 +185,13 @@ int main(void)
 // this is where the do-while loop will go
 void *client_handler(void *socket_desc)
 {
-      struct timeval tv1, tv2;
-
-    // get "wall clock" time at start
-    // once the client connects, the start time is set
-    if (gettimeofday(&tv1, NULL) == -1) {
-        perror("gettimeofday error");
-        exit(EXIT_FAILURE);
-    }
-
+   
+   count=count+1;
     //Get the socket descriptor
     int connfd = *(int *) socket_desc;
     
 
-    get_and_send_server_time(connfd);
+    //get_and_send_server_time(connfd);
 
     /*
     send_hello(connfd);
@@ -210,7 +215,7 @@ void *client_handler(void *socket_desc)
      readn(connfd, (int *) &choice,sizeof(int) );
       int *random_number_pointer=generate_random_numbers();
 
-     printf("choiceeee %d\n",choice);
+     //printf("choiceeee %d\n",choice);
      switch(choice){
       case 1: 
 	      get_and_send_name_and_student_id( connfd);
@@ -224,10 +229,14 @@ void *client_handler(void *socket_desc)
 
 	      break;
       case 4:
+	      get_and_send_file_names(connfd);
 	      break;
       case 5: 
+	      send_file(connfd); 
 	      break;
       case 6:
+	     
+	      count=count-1;
 	      break;
      
      } while(choice!=6);
@@ -235,25 +244,12 @@ void *client_handler(void *socket_desc)
 
 
    
-     
+    printf("\n\n number of clients is %d",count);
+  
 
-     // get "wall clock" time at end
-    if (gettimeofday(&tv2, NULL) == -1) {
-        perror("gettimeofday error");
-        exit(EXIT_FAILURE);
-    }
-    // in microseconds...
- float execution_time= (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec);
-   
-
- // in microseconds...
-    printf("Total execution time = %f seconds\n",execution_time);
-
-    shutdown(connfd, SHUT_RDWR);
-    close(connfd);
 
     printf("Thread %lu exiting\n", (unsigned long) pthread_self());
-
+   
     // always clean up sockets gracefully
     shutdown(connfd, SHUT_RDWR);
     close(connfd);
@@ -297,11 +293,13 @@ void get_and_send_employee(int socket, employee * e)
 
 
 
+
+// generate five random numbers
 int * generate_random_numbers(){
-        int max_number=1000;
-     static  int random_numbers[5];// array of five random numbers
+        const  int max_number=1000;
+        static  int random_numbers[5];// array of five random numbers
         int i;// to be used in for loop
-        int size= sizeof(random_numbers)/sizeof(int);// length of array, which in this case will always be five
+      const int size= sizeof(random_numbers)/sizeof(int);// length of array, which in this case will always be five
         srand((unsigned)time(NULL)); // seed generator for pseudo-random numbers
 
         // populate the array with random numbers from 0 to 1000
@@ -314,30 +312,43 @@ int * generate_random_numbers(){
 }// end of random number generator
 
 
+void send_file(int socket){
+    
+      size_t name_size;
+         char file_name[100];      
+
+	readn(socket, (size_t *) &name_size, sizeof(size_t));
+  
+	//char file_name[name_size];
+        readn(socket, (unsigned char *) file_name, name_size);
+
+	printf("\n\n file name is %s\n ", file_name);
+
+	printf("%lu\n",name_size);
+    //writen(socket, (unsigned char *) &payload_length, sizeof(size_t));
+    //writen(socket, (unsigned char *) e, payload_length);
+
+
+}
 
 
 void get_and_send_name_and_student_id(int client_socket){
      char student_name[45]="Liyeuk Reynald Joabet ";
-     char student_id[]=  " S1906586";
+      char student_id[]=  " S1906586";
 
-    
    
      strcat(student_name,string_ip_address);// concatenate student_name and ip address
      strcat(student_name,student_id);// concatenate the result of the first concatenation with student_id
-     size_t length=strlen(student_name);//length of message to be sent
- //    char message[length];// array
-   //  strcpy(message,student_name);
-     //printf("%lu\n",length);
-    // printf("%s\n",message);
-     //printf("%lu \n",strlen(message));
-     size_t size=length+1;
+      size_t length=strlen(student_name);//length of message to be sent
+ 
+      size_t size=length+1;
      // send length of message to client first
       writen(client_socket, (unsigned int *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
       writen(client_socket, (unsigned char *)student_name, size);  
 }
 
 void get_and_send_five_random_numbers(int socket,int *p){
-         int length=15;
+        const int length=15;
         char message[length];// 15 is the maximum we can have as the maximum random number is 999. 3 digit  times 5 
 	for(int i=0;i<5;i++){
        sprintf(&message[strlen(message)],"%d",*(p+i));
@@ -354,7 +365,7 @@ void get_and_send_five_random_numbers(int socket,int *p){
 }
 
 struct utsname server_uname_information(){
-        struct utsname uts;
+         struct utsname uts;
         if(uname(&uts)== -1){
         perror("uname error");
         exit(EXIT_FAILURE);
@@ -366,7 +377,7 @@ struct utsname server_uname_information(){
 
 void get_and_send_server_uname_information(int socket,struct utsname * uts){
 
-    size_t payload_length=sizeof(*(uts));// calculate the size of the struct to send to client
+     size_t payload_length=sizeof(*(uts));// calculate the size of the struct to send to client
 
    // send length of message to client first
     writen(socket, (unsigned char *) &payload_length, sizeof(size_t));// send the amount of characters to be sent to client
@@ -387,7 +398,7 @@ void get_and_send_server_uname_information(int socket,struct utsname * uts){
 
 
  void get_and_send_server_time(int socket){
-	 size_t payload_length;
+	  size_t payload_length;
  
       time_t t;    // always look up the manual to see the error conditions
     //  here "man 2 time"
@@ -417,4 +428,95 @@ void get_and_send_server_uname_information(int socket,struct utsname * uts){
 
  }
 
-void get_and_send_file_names(int socket){}
+void stat_file(char *file,char message[])
+{
+  
+  const char separator[]="  ";
+    struct stat sb;
+
+
+     if (stat(file, &sb) == -1) {
+        perror("stat");
+        exit(EXIT_FAILURE);
+    }
+
+    //printf("File type:            %s    ",file);
+
+     switch (sb.st_mode & S_IFMT){
+    case S_IFREG:
+ 
+         strcat(message,separator);
+        strcat(message,file);
+        break;
+    default:
+        // do nothing
+        break;
+    }
+    
+    
+}
+
+
+void get_and_send_file_names(int socket){
+    
+
+      char message[1000]="";
+    struct dirent **namelist;
+    int payload_length;
+    int n;
+    // tell scandir to scan the directory(./upload) and store an array of pointers to directory entries  in namelist
+    // alphasort is used to sort the array aphabetically
+    // scandir uses malloc to allocate the space
+    // scandir returns the number of entries in the array and stores it in n
+    
+
+
+    if ((n = scandir(".", &namelist, NULL, alphasort)) == -1){
+	perror("scandir");
+
+       strcpy(message,"Folder upload does not exist in current directory");
+        payload_length=strlen(message);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+
+       printf("%s \n\n",message);
+
+    }
+    else {
+	 if(n==0){
+	 strcpy(message,"upload directory is empty");
+        payload_length=strlen(message);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+
+       printf("%s \n\n",message);
+
+	 }
+	 else{ 
+	while (n--) {
+//	    printf("File name:		  %s\n", namelist[n]->d_name);
+     stat_file(namelist[n]->d_name,message);
+	   free(namelist[n]);	// free the 
+	}
+	free(namelist);// free the entire array
+
+        if(sizeof(message)==0){
+	strcpy(message,"Directory files are not regular files");
+        payload_length=strlen(message);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+
+       printf("%s \n\n",message);
+
+	}
+	else{
+	payload_length=strlen(message);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+      } // end of inner else block 
+
+
+    }// end of inner else block
+//    printf("%s\n\n ",message);
+} // end of outer else block
+}

@@ -14,6 +14,7 @@
 #include "rdwrn.h"
 #include <sys/utsname.h>
 #include <time.h>
+#include<ctype.h>
 
 typedef struct {
     int id_number;
@@ -45,7 +46,7 @@ void get_hello(int socket)
 {
     char hello_string[32];
     size_t k;
-
+    
     readn(socket, (unsigned char *) &k, sizeof(size_t));	
     readn(socket, (unsigned char *) hello_string, k);
 
@@ -65,6 +66,7 @@ void get_server_time(int socket)
 
     printf("Current Server TIme:  %s\n", asctime(&(tm)));
     printf("Received: %zu bytes\n\n", k);
+
 } // end get_hello()
 
 
@@ -82,7 +84,18 @@ void get_random_numbers(int socket,int choice){
 
 	printf("Random Number: %s\n",message);
 	printf("Received: %d bytes\n\n", k);
+
+       
 }// end of get_random_numbers()
+
+
+
+// function to read random numbers
+void quit_client(int socket,int choice){
+	// send option to close client
+         writen(socket, (unsigned int *) &choice,sizeof(int));
+
+}// en of function
 
 void get_student_name_and_student_id(int socket,int choice){
    char message[45];// the maximum length of the message is less than 45
@@ -94,10 +107,27 @@ void get_student_name_and_student_id(int socket,int choice){
 
     printf("Student Details: %s\n", message);
     printf("Received: %lu bytes\n\n", k);
-
-
+ 
+    
 } // end of get_student_name_and_student_id()
 
+void get_file_copy_enhancement(int socket, int choice){
+           
+
+	printf("\nEnter file name\n\n");
+	char file_name[100];
+	scanf("%s",file_name);
+
+	
+       size_t size=strlen(file_name)+1;
+
+        //
+        writen(socket, (int *) &choice,sizeof(int) );//  send choice to server
+       writen(socket, (size_t *) &size, sizeof(size_t)); // take sizeof(size_t) bytes  from (&size) and write to socket
+       writen(socket, (unsigned char *)&file_name, size);
+
+
+}
 
 
 void get_server_uname_information(int socket,int choice){
@@ -110,17 +140,43 @@ void get_server_uname_information(int socket,int choice){
     readn(socket, (size_t *) &payload_length, sizeof(size_t));// read number of bytes to be sent by server to client
     readn(socket, (unsigned char *)&uts, payload_length);
 
-      //print out details of received  utsnme structure
+     // print out details of received  utsnme structure
       printf("Node name   :       %s\n",  uts.nodename);
       printf("System name :       %s\n",  uts.sysname);
       printf("Release     :       %s\n",  uts.release);
       printf("Version     :       %s\n",  uts.version);
       printf("Machine     :       %s\n",  uts.machine);
       printf("(%zu bytes)\n", payload_length);
+
+     
 }
 
+void get_file_names(int socket,int choice){
+	const size_t payload_length;// calculate the size(in bytes) that utsname occupies in memory
+        char message[1000]="";
+        const char delimiter[]="  ";
 
+     writen(socket, (int *) &choice,sizeof(int) );//  send choice to server
 
+    readn(socket, (unsigned int *) &payload_length, sizeof(int));// read number of bytes to be sent by server to client
+    readn(socket, (unsigned char *)message, payload_length);
+
+    // use strtok() to split the received message into a series of tokens based on the separator used by the server
+    //strtok returns a pointer to the token split up, otherwise a null pointer if the string cannot be split
+    
+    printf("File names in the server current working directory are listed below :\n\n");
+
+    // extract the first token
+     char *token=strtok(message,delimiter);
+     //loop through the string to extrct all other tokens
+     while(token !=NULL){
+    printf("%s \n\n",token);//print token
+
+    token=strtok(NULL,delimiter);
+     }
+     printf("(%zu bytes)\n", payload_length);
+
+}
 
 int main(void)
 {
@@ -132,6 +188,8 @@ int main(void)
 	perror("Error - could not create socket");
 	exit(EXIT_FAILURE);
     }
+
+    //memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
 
     serv_addr.sin_family = AF_INET;
 
@@ -153,49 +211,55 @@ int main(void)
     //
     //
   
-    get_server_time(sockfd);
+
+//      get_server_time(sockfd);
+      
     
-    void client_menu(int socket){
-	    int choice;
-	do{
+      int choice;
+
+	do {
+       
         printf("\n 1. Get and display your name and student ID\n");
 	printf(" 2. Get and display an array of 5 random numbers\n");
 	printf(" 3. Get and display the uname information of the server\n");
 	printf(" 4. Get and display a list of file names\n");
-	printf(" 5. Enhancement\n");
+	printf(" 5. File copy enhancement\n");
 	printf(" 6. Quit\n\n");
 
 	scanf("%d",&choice);
-  
+
          switch(choice){
-		 case 1: get_student_name_and_student_id(socket,choice);
+		case 1 :
+			 get_student_name_and_student_id(sockfd,choice);
 		    break;
-	         case 2:get_random_numbers(socket,choice);
+	        case 2 :
+		     get_random_numbers(sockfd,choice);
+		     
 		    break;
-                 case 3: get_server_uname_information(socket,choice);
+                case 3 :
+		   get_server_uname_information(sockfd,choice);
+		   
 		    break;
-                 case 4:
+                case 4 :
+		  get_file_names(sockfd,choice);
 		    break;
-                 case 5: 
+                case 5 :
+		   get_file_copy_enhancement(sockfd,choice);               
 		    break;
-                 case 6:
-                 printf("Closing client socket\n\n");
-		 close(sockfd);
+                case 6 :
+                 quit_client(sockfd,choice);
 		    break;
-         	   default:
-	       printf("\n\nInvalid input.Try again,option between 1 and 6\n\n");
+         	default :
+		
+	       printf("\n\nInvalid input.Try again,you entered %d. Correct option is between 1 and 6\n\n",choice);
             
 	     }
 
-	} while (choice!=6);
-    }// end of client_menu();
+	}while(choice !=6); 
+   
 
 
-
-     client_menu(sockfd);
-
-
-
+	
 
 
 // get a string from the server
@@ -225,9 +289,12 @@ int main(void)
 
     // *** make sure sockets are cleaned up
 
-   
 
-    //close(sockfd);
+printf("Closing client socket\n");
+
+   shutdown(sockfd,SHUT_RDWR);
+
+    close(sockfd);
 
     exit(EXIT_SUCCESS);
 
