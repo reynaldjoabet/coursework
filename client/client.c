@@ -64,7 +64,8 @@ void get_server_time(int socket)
     readn(socket, (unsigned int *) &k, sizeof(size_t));
     readn(socket, (unsigned char *)&tm, k);
 
-    printf("Current Server TIme:  %s\n", asctime(&(tm)));
+    printf("Welcome and thanks for connecting\n");
+    printf("Current Server Time:  %s\n", asctime(&(tm)));
     printf("Received: %zu bytes\n\n", k);
 
 } // end get_hello()
@@ -74,13 +75,13 @@ void get_server_time(int socket)
 // function to read random numbers
 void get_random_numbers(int socket,int choice){
 
-         int k;
+         static int k;
          writen(socket, (unsigned int *) &choice,sizeof(int) );
      
   	readn(socket,(unsigned int *) &k,sizeof(int));
-	int length=k/sizeof(int);
-	char message[length];
-	readn(socket,(unsigned char *)message,k);
+	const int length=k/sizeof(int);
+	  char message[length];
+	readn(socket,(unsigned char *)&message,k);
 
 	printf("Random Number: %s\n",message);
 	printf("Received: %d bytes\n\n", k);
@@ -99,41 +100,59 @@ void quit_client(int socket,int choice){
 
 void get_student_name_and_student_id(int socket,int choice){
    char message[45];// the maximum length of the message is less than 45
-    size_t k;
+    static size_t k;
      writen(socket, (int *) &choice,sizeof(int) );
 
-    readn(socket, (unsigned int *) &k, sizeof(size_t));
-    readn(socket, (unsigned char *)message, k);
-
+    readn(socket, (size_t *) &k, sizeof(size_t));
+    readn(socket,(unsigned char*) &message, k);
+   
     printf("Student Details: %s\n", message);
     printf("Received: %lu bytes\n\n", k);
- 
-    
+   memset(message,0,strlen(message));
+   memset(&choice,0,1);
+
 } // end of get_student_name_and_student_id()
 
 void get_file_copy_enhancement(int socket, int choice){
-           
-
-	printf("\nEnter file name\n\n");
-	char file_name[100];
-	scanf("%s",file_name);
-
-	
-       size_t size=strlen(file_name)+1;
+         FILE *fp;
+	 static int n;
+	//printf("\nEnter file name\n\n");
+	char file_name[100]="helloclient.txt";
+	//scanf("%s",file_name);
+        static int payload_length;
+       //size_t size=strlen(file_name)+1;
 
         //
         writen(socket, (int *) &choice,sizeof(int) );//  send choice to server
-       writen(socket, (size_t *) &size, sizeof(size_t)); // take sizeof(size_t) bytes  from (&size) and write to socket
-       writen(socket, (unsigned char *)&file_name, size);
+       //writen(socket, (size_t *) &size, sizeof(size_t)); // take sizeof(size_t) bytes  from (&size) and write to socket
+       //writen(socket, (unsigned char *)&file_name, size);
+       fp=fopen(file_name,"w"); //a is used to append the content of each line to the existing one,unlike w which would erase the first content for the second
+       if(fp!=NULL){
+	       readn(socket, (int *) &payload_length, sizeof(int));
+               char message[payload_length];
 
+	       while (readn(socket,(unsigned char*) &message, payload_length)>0){
+	               n=strlen(message);
+		       printf("\n %d",n);
+		       fwrite(&message,1,n,fp);
+                     printf("\n\n %s\n\n",message);
 
+	    
+	       }
+       } else {
+       
+       printf("Error in creating  file\n\n");
+       }	
+     
+       fclose(fp);
+  
 }
 
 
 void get_server_uname_information(int socket,int choice){
 
-        size_t payload_length;// calculate the size(in bytes) that utsname occupies in memory
-	struct utsname uts;
+        static size_t payload_length;// calculate the size(in bytes) that utsname occupies in memory
+	static struct utsname uts;
      
      writen(socket, (int *) &choice,sizeof(int) );//  send choice to server
 
@@ -152,8 +171,8 @@ void get_server_uname_information(int socket,int choice){
 }
 
 void get_file_names(int socket,int choice){
-	const size_t payload_length;// calculate the size(in bytes) that utsname occupies in memory
-        char message[1000]="";
+static size_t payload_length;// calculate the size(in bytes) that utsname occupies in memory
+        char message[1000]=" ";
         const char delimiter[]="  ";
 
      writen(socket, (int *) &choice,sizeof(int) );//  send choice to server
@@ -170,11 +189,11 @@ void get_file_names(int socket,int choice){
      char *token=strtok(message,delimiter);
      //loop through the string to extrct all other tokens
      while(token !=NULL){
-    printf("%s \n\n",token);//print token
+     printf("%s \n\n",token);//print token
 
-    token=strtok(NULL,delimiter);
+      token=strtok(NULL,delimiter);
      }
-     printf("(%zu bytes)\n", payload_length);
+     //printf("(%zu bytes)\n", payload_length);
 
 }
 
@@ -189,7 +208,7 @@ int main(void)
 	exit(EXIT_FAILURE);
     }
 
-    //memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
+    memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
 
     serv_addr.sin_family = AF_INET;
 
@@ -227,24 +246,35 @@ int main(void)
 	printf(" 6. Quit\n\n");
 
 	scanf("%d",&choice);
-
          switch(choice){
 		case 1 :
 			 get_student_name_and_student_id(sockfd,choice);
+                          memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
+
 		    break;
 	        case 2 :
 		     get_random_numbers(sockfd,choice);
-		     
+		      memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
+
+
 		    break;
                 case 3 :
 		   get_server_uname_information(sockfd,choice);
-		   
+		    memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
+
+
 		    break;
                 case 4 :
 		  get_file_names(sockfd,choice);
+		   memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
+
+
 		    break;
                 case 5 :
-		   get_file_copy_enhancement(sockfd,choice);               
+		   get_file_copy_enhancement(sockfd,choice);    
+	 memset(&serv_addr, '0', sizeof(serv_addr));// clean buffer
+
+
 		    break;
                 case 6 :
                  quit_client(sockfd,choice);

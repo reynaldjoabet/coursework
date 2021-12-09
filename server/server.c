@@ -23,6 +23,10 @@
 
    struct timeval tv1;
 
+int found=0;// using this as a flag to indicate if there is a name match among the files present in the directory.
+   // 0 is false while 1 represents true
+
+
   char string_ip_address[INET_ADDRSTRLEN];// global variable
 // thread function
 void *client_handler(void *);
@@ -46,14 +50,14 @@ void send_file(int);
 int count=0;
 void get_and_send_server_time(int);
 // signal handler to be called on receipt of (in this case) SIGTERM
-static void handler(int sig, siginfo_t *siginfo, void *context)
+static  void handler(int sig, siginfo_t *siginfo, void *context)
 {
 
 	 struct timeval tv2;
 
-    printf("\n\nPID: %ld, UID: %ld\n",(long) siginfo->si_pid, (long) siginfo->si_status);
+    printf("\n\nPID: %d, UID: %ld\n", siginfo->si_pid, (long) siginfo->si_status);
  
-    printf("%d ",sig);
+    //printf("%u ",context);
 
     // get "wall clock" time at end
     if (gettimeofday(&tv2, NULL) == -1) {
@@ -78,28 +82,30 @@ int main(void)
 {
     int listenfd = 0, connfd = 0;
 
-    struct sigaction act;// used to register the signal handler
+     struct sigaction act={};// initialize to all 0s
 
-     memset(&act, '\0', sizeof(act));
+    // memset(&act, 0, sizeof(act));
 
-    
     // the SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler
     // this also enables the handling function to be called like so 
     // void  hndler(int signo, siginfo_t *info, void *context);
-    act.sa_flags = SA_SIGINFO;
+    
     
     // this is a pointer to a function
-    act.sa_sigaction = &handler;//handler function pointer
+    act.sa_sigaction =handler;//handler function pointer
 
+    act.sa_flags = SA_SIGINFO;
 
    // if successful, returns 0 else returns -1
-    if (sigaction(SIGINT, &act, NULL) == -1) {
+    if (sigaction(SIGINT, &act, NULL) == -1) {// set the signal handler for SIGINT
         perror("sigaction");
         exit(EXIT_FAILURE);
     }
 
     
+ 
 
+  
     struct sockaddr_in serv_addr;// declares internet socket address for server
     struct sockaddr_in client_addr; //
     socklen_t socksize = sizeof(struct sockaddr_in);
@@ -138,7 +144,6 @@ int main(void)
         perror("gettimeofday error");
         exit(EXIT_FAILURE);
     }
-
 
 
    
@@ -183,14 +188,13 @@ int main(void)
 
 // thread function - one instance of each for each connected client
 // this is where the do-while loop will go
-void *client_handler(void *socket_desc)
+void *client_handler(void *socket_desc)  // client_hndler needs to accept a pointer and return a pointer
 {
    
-   count=count+1;
     //Get the socket descriptor
     int connfd = *(int *) socket_desc;
     
-
+ free(socket_desc);// free pointer
     //get_and_send_server_time(connfd);
 
     /*
@@ -236,7 +240,6 @@ void *client_handler(void *socket_desc)
 	      break;
       case 6:
 	     
-	      count=count-1;
 	      break;
      
      } while(choice!=6);
@@ -254,7 +257,7 @@ void *client_handler(void *socket_desc)
     shutdown(connfd, SHUT_RDWR);
     close(connfd);
 
-    return 0;
+    return NULL;
 }  // end client_handler()
 
 // how to send a string
@@ -312,23 +315,104 @@ int * generate_random_numbers(){
 }// end of random number generator
 
 
-void send_file(int socket){
-    
-      size_t name_size;
-         char file_name[100];      
+void  write_file(char *file,int socket)
+{
 
-	readn(socket, (size_t *) &name_size, sizeof(size_t));
+    struct stat sb;
+    FILE *fp;
+    found=1;
+
+     if (stat(file, &sb) == -1) {
+        perror("stat");
+        exit(EXIT_FAILURE);
+    }
+    
+   static int payload_length;
+
+   char data[payload_length];
+    fp=fopen(file,"r");
+     if(fp==NULL){ // attempt to read file
+        strcpy(data,"Error reading file");
+	payload_length=strlen(data);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)data, payload_length);
+
+     }else {
+
+	     payload_length=sb.st_size;
+   
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+
+	while(fgets(data,payload_length,fp)>0){
+        writen(socket, (unsigned char *)data, payload_length);
+
+	}
+           
+     }
+  fclose(fp);//used to close the file
+}
+
+// main function to send file to client
+void send_file(int socket){
+       char message[65];
+    struct dirent **namelist;
+    static int payload_length;
+  static   int n;
+     // static size_t name_size;
+         char file_name[100]="hello.txt";      
+//	readn(socket, (size_t *) &name_size, sizeof(size_t));
   
 	//char file_name[name_size];
-        readn(socket, (unsigned char *) file_name, name_size);
+  //      readn(socket, (unsigned char *) file_name, name_size);
 
-	printf("\n\n file name is %s\n ", file_name);
+	
+    // tell scandir to scan the directory(./upload) and store an array of pointers to directory entries  in namelist
+    // alphasort is used to sort the array aphabetically
+    // scandir uses malloc to allocate the space
+    // scandir returns the number of entries in the array and stores it in n
 
-	printf("%lu\n",name_size);
-    //writen(socket, (unsigned char *) &payload_length, sizeof(size_t));
-    //writen(socket, (unsigned char *) e, payload_length);
+
+    if ((n = scandir(".", &namelist, NULL, alphasort)) == -1){
+        
+       strcpy(message,"Folder upload does not exist in current directory");
+        payload_length=strlen(message);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+
+    }
+    else {
+         if(n==0){
+         strcpy(message,"upload directory is empty");
+        payload_length=strlen(message);
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+         
+       }
+         else{
+        while (n--) {
+//        
+           if(strcmp(namelist[n]->d_name,file_name)==0){
+           write_file(namelist[n]->d_name,socket);// only called if the entered file name and a file name in the directory match
+           free(namelist[n]);   // free the
+	   }
+	}
+	
+          free(namelist);// free the entire array
 
 
+        if(found==0){
+        strcpy(message,"Directory upload does not contain any file with the given name");
+        payload_length=strlen(message)+1;
+        writen(socket, (unsigned int *) &payload_length, sizeof(int));
+        writen(socket, (unsigned char *)message, payload_length);
+        
+
+      } // end of inner else block
+
+    }// end of inner else block
+} // end of outer else block
+
+  
 }
 
 
@@ -343,7 +427,7 @@ void get_and_send_name_and_student_id(int client_socket){
  
       size_t size=length+1;
      // send length of message to client first
-      writen(client_socket, (unsigned int *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
+      writen(client_socket, (size_t *) &size, sizeof(size_t));// send the amount of characters to be sent to client  
       writen(client_socket, (unsigned char *)student_name, size);  
 }
 
@@ -455,6 +539,8 @@ void stat_file(char *file,char message[])
     
     
 }
+
+
 
 
 void get_and_send_file_names(int socket){
